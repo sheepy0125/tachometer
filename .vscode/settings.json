@@ -1,0 +1,28 @@
+{
+    "cSpell.words": [
+        "adafruit",
+        "atmega",
+        "COMPA",
+        "CUYA",
+        "DELTATIME",
+        "EXINT",
+        "Intialize",
+        "janky",
+        "leds",
+        "lengthed",
+        "ocie",
+        "pcicr",
+        "PCINT",
+        "pcmsk",
+        "prescale",
+        "PRESCALER",
+        "Rahix's",
+        "sipo",
+        "tccr",
+        "timsk",
+        "ufmt",
+        "Usart",
+        "USART",
+        "uwriteln"
+    ]
+}
