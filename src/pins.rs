@@ -9,11 +9,11 @@ use arduino_hal::{
 };
 use embedded_hal::digital::v2::OutputPin;
 
-pub mod character_lcd {
+pub mod rpm_display {
     use super::*;
-    pub type SerialIn = Pin<Output, port::PB0>;
-    pub type Clock = Pin<Output, port::PB1>;
-    pub type Latch = Pin<Output, port::PB2>;
+    pub type SerialIn = Pin<Output, port::PD5>;
+    pub type Clock = Pin<Output, port::PD6>;
+    pub type Latch = Pin<Output, port::PD7>;
 }
 
 pub mod optical_encoder {

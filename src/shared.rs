@@ -8,10 +8,11 @@ use arduino_hal::{
     Usart,
 };
 
-pub const DEBUG: bool = false;
-pub const TRACE: bool = false;
+pub const DEBUG: bool = true;
+pub const TRACE: bool = true;
 pub const BAUD_RATE: u32 = 57_600_u32;
 pub const UPDATE_DELTATIME: u16 = 100_u16;
+pub const DIGITS: usize = 4;
 pub type UsbSerial = Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>;
 
 pub mod pin_state {

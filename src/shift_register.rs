@@ -29,7 +29,7 @@ where
     pub latch_pin: Latch,
     pub is_latched: bool,
     current_shifted_bit: usize,
-    bit_array: [PinState; N],
+    pub bit_array: [PinState; N],
 }
 impl<const N: usize, SerialInput, Clock, Latch> ShiftRegister<N, SerialInput, Clock, Latch>
 where

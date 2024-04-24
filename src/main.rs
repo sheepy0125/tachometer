@@ -6,19 +6,21 @@
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
 
-use ag_lcd::{Cursor, Display as LcdDisplayMode, LcdDisplay, Lines};
-use arduino_hal::default_serial;
-use console::{debug, println, set_console};
+use arduino_hal::{default_serial, delay_ms};
+use console::{println, set_console};
 use pins::ShiftRegisterPins;
+use seven_segment_display::{Display as _, RPMDisplay};
 use shared::UsbSerial;
-use shift_register_driver::sipo::ShiftRegister8 as DecomposableShiftRegister;
+use state::State;
 
 pub mod console;
 pub mod interrupts;
 pub mod panic;
 pub mod pins;
+pub mod seven_segment_display;
 pub mod shared;
 pub mod shift_register;
+pub mod state;
 
 #[arduino_hal::entry]
 fn main() -> ! {
@@ -29,14 +31,18 @@ fn main() -> ! {
 
     println!("Hello from the Tachometer!");
 
-    // Set up pin handles
-    let optical_encoder_pin = pins.d12.into_pull_up_input() as pins::optical_encoder::Sensor;
-    let character_lcd_shift_register_pins = ShiftRegisterPins {
-        serial_input: pins.d8.into_output() as pins::character_lcd::SerialIn,
-        clock: pins.d9.into_output() as pins::character_lcd::Clock,
-        latch: pins.d10.into_output() as pins::character_lcd::Latch,
+    // State initialization
+    let mut state = State {
+        digits: [1, 2, 3, 4],
     };
 
+    // Set up pin handles
+    let optical_encoder_pin = pins.d12.into_pull_up_input() as pins::optical_encoder::Sensor;
+    let rpm_display_shift_register_pins = ShiftRegisterPins {
+        latch: pins.d7.into_output() as pins::rpm_display::Latch,
+        serial_input: pins.d5.into_output() as pins::rpm_display::SerialIn,
+        clock: pins.d6.into_output() as pins::rpm_display::Clock,
+    };
     // Interrupt initializations
     unsafe {
         interrupts::millis_init(peripherals.TC0);
@@ -48,28 +54,20 @@ fn main() -> ! {
         avr_device::interrupt::enable();
     };
 
-    // Character LCD initialization
-    debug!("[DEBUG] Character LCD shift register initialization");
-    let character_lcd_shift_register = DecomposableShiftRegister::new(
-        character_lcd_shift_register_pins.clock,
-        character_lcd_shift_register_pins.latch,
-        character_lcd_shift_register_pins.serial_input,
-    );
-    let character_lcd_pins = character_lcd_shift_register.decompose();
-    let mut character_lcd: LcdDisplay<_, _> = match character_lcd_pins {
-        // Refer to KiCad schematic for pin layout
-        [_, rs, _, enabled, db4, db5, db6, db7] => {
-            LcdDisplay::new(rs, enabled, arduino_hal::Delay::new())
-                .with_half_bus(db4, db5, db6, db7)
-                .with_display(LcdDisplayMode::On)
-                .with_cursor(Cursor::On)
-                .with_lines(Lines::TwoLines)
-                .build()
-        }
-    };
-
-    character_lcd.print("Tachometer!!!");
+    // Display initialization
+    let mut rpm_display = RPMDisplay::new(shift_register::ShiftRegister::from_pins(
+        rpm_display_shift_register_pins,
+    ));
 
     // Main loop
-    loop {}
+    loop {
+        rpm_display.display(&state);
+        for digit in state.digits.iter_mut() {
+            *digit += 1;
+            if *digit > 9 {
+                *digit = 0;
+            }
+        }
+        delay_ms(1000);
+    }
 }
