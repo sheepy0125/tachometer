@@ -3,31 +3,23 @@
 use arduino_hal::{
     hal::port,
     port::{
-        mode::{Input, Output, PullUp},
+        mode::{Input, PullUp},
         Pin,
     },
 };
-use embedded_hal::digital::v2::OutputPin;
-
-pub mod rpm_display {
-    use super::*;
-    pub type SerialIn = Pin<Output, port::PD5>;
-    pub type Clock = Pin<Output, port::PD6>;
-    pub type Latch = Pin<Output, port::PD7>;
-}
 
 pub mod optical_encoder {
     use super::*;
     pub type Sensor = Pin<Input<PullUp>, port::PB4>;
 }
 
-pub struct ShiftRegisterPins<SerialInput, Clock, Latch>
-where
-    SerialInput: OutputPin,
-    Clock: OutputPin,
-    Latch: OutputPin,
-{
-    pub serial_input: SerialInput,
-    pub clock: Clock,
-    pub latch: Latch,
+pub mod iic {
+    use super::*;
+    pub type SDA = Pin<Input<PullUp>, port::PC4>;
+    pub type SCL = Pin<Input<PullUp>, port::PC5>;
+}
+
+pub struct IICPins {
+    pub sda: self::iic::SDA,
+    pub scl: self::iic::SCL,
 }

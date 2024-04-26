@@ -6,11 +6,11 @@
 #![feature(trait_alias)]
 #![feature(stmt_expr_attributes)]
 
-use arduino_hal::{default_serial, delay_ms};
+use arduino_hal::{default_serial, delay_ms, I2c};
 use console::{println, set_console};
-use pins::ShiftRegisterPins;
 use seven_segment_display::{Display as _, RPMDisplay};
 use shared::UsbSerial;
+use shared_bus::BusManagerSimple;
 use state::State;
 
 pub mod console;
@@ -19,7 +19,6 @@ pub mod panic;
 pub mod pins;
 pub mod seven_segment_display;
 pub mod shared;
-pub mod shift_register;
 pub mod state;
 
 #[arduino_hal::entry]
@@ -33,16 +32,16 @@ fn main() -> ! {
 
     // State initialization
     let mut state = State {
-        digits: [1, 2, 3, 4],
+        digits: [0, 0, 0, 0],
     };
 
     // Set up pin handles
     let optical_encoder_pin = pins.d12.into_pull_up_input() as pins::optical_encoder::Sensor;
-    let rpm_display_shift_register_pins = ShiftRegisterPins {
-        latch: pins.d7.into_output() as pins::rpm_display::Latch,
-        serial_input: pins.d5.into_output() as pins::rpm_display::SerialIn,
-        clock: pins.d6.into_output() as pins::rpm_display::Clock,
+    let iic_pins = pins::IICPins {
+        sda: pins.a4.into_pull_up_input(),
+        scl: pins.a5.into_pull_up_input(),
     };
+
     // Interrupt initializations
     unsafe {
         interrupts::millis_init(peripherals.TC0);
@@ -54,20 +53,16 @@ fn main() -> ! {
         avr_device::interrupt::enable();
     };
 
+    // IIC initialization
+    let iic = I2c::new(peripherals.TWI, iic_pins.sda, iic_pins.scl, 1);
+    let iic_bus = BusManagerSimple::new(iic);
+
     // Display initialization
-    let mut rpm_display = RPMDisplay::new(shift_register::ShiftRegister::from_pins(
-        rpm_display_shift_register_pins,
-    ));
+    let mut rpm_display = RPMDisplay::new(iic_bus.acquire_i2c());
 
     // Main loop
     loop {
         rpm_display.display(&state);
-        for digit in state.digits.iter_mut() {
-            *digit += 1;
-            if *digit > 9 {
-                *digit = 0;
-            }
-        }
         delay_ms(1000);
     }
 }

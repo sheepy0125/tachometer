@@ -1,62 +1,55 @@
-//! All time displays
+use crate::state::State;
 
-use crate::{
-    console::debug,
-    pins,
-    shared::pin_state::{PinState, HIGH, LOW},
-    shared::DIGITS,
-    shift_register::ShiftRegister,
-    state::State,
-};
+use adafruit_7segment::{Index, SevenSegment};
+use embedded_hal::blocking::i2c;
+use ht16k33::{Dimming, Display as DisplayState, HT16K33};
+
+pub const RPM_CONTROLLER_ADDRESS: u8 = 0x70;
 
 pub trait Display {
     fn display(&mut self, state: &State);
 }
 
-/// A, B, C, D, E, F, G, & DP pin states for a given digit index
-const SEVEN_SEGMENT_OUTPUT: [[PinState; 8]; 10 + 1] = [
-    [HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW, LOW],  // 0
-    [LOW, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW],      // 1
-    [HIGH, HIGH, LOW, HIGH, HIGH, LOW, HIGH, LOW],   // 2
-    [HIGH, HIGH, HIGH, HIGH, LOW, LOW, HIGH, LOW],   // 3
-    [LOW, HIGH, HIGH, LOW, LOW, HIGH, HIGH, LOW],    // 4
-    [HIGH, LOW, HIGH, HIGH, LOW, HIGH, HIGH, LOW],   // 5
-    [HIGH, LOW, HIGH, HIGH, HIGH, HIGH, HIGH, LOW],  // 6
-    [HIGH, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW],     // 7
-    [HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW], // 8
-    [HIGH, HIGH, HIGH, HIGH, LOW, HIGH, HIGH, LOW],  // 9
-    [LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW],        // OFF
-];
-
-/// The RPM display is just 4 CL5611AH seven segment digits in linked 8-bit shift registers
-/// Each shift register's outputs are in order of A-G and DP
-pub struct RPMDisplay {
-    shift_register: ShiftRegister<
-        { 4 * 8 },
-        pins::rpm_display::SerialIn,
-        pins::rpm_display::Clock,
-        pins::rpm_display::Latch,
-    >,
+/// This is a KW4-12041CUYA 4-digit 7-segment display behind the HT16K33 IIC backpack
+pub struct RPMDisplay<I> {
+    controller: HT16K33<I>,
 }
-impl RPMDisplay {
-    pub fn new(
-        shift_register: ShiftRegister<
-            { DIGITS * 8 },
-            pins::rpm_display::SerialIn,
-            pins::rpm_display::Clock,
-            pins::rpm_display::Latch,
-        >,
-    ) -> Self {
-        Self { shift_register }
+impl<I, E> RPMDisplay<I>
+where
+    I: i2c::Write<Error = E> + i2c::WriteRead<Error = E>,
+    E: core::fmt::Debug,
+{
+    pub fn new(iic: I) -> Self {
+        let mut controller = HT16K33::new(iic, RPM_CONTROLLER_ADDRESS);
+        controller
+            .initialize()
+            .expect("Failed to initialize RPM display");
+        controller
+            .set_display(DisplayState::ON)
+            .expect("Failed to turn on the RPM display");
+        controller
+            .set_dimming(Dimming::BRIGHTNESS_MAX)
+            .expect("Failed to set dimming on RPM display");
+        controller.update_buffer_with_colon(false);
+        Self { controller }
     }
 }
-impl Display for RPMDisplay {
+impl<I, E> Display for RPMDisplay<I>
+where
+    I: i2c::Write<Error = E> + i2c::WriteRead<Error = E>,
+    E: core::fmt::Debug,
+{
     fn display(&mut self, state: &State) {
-        debug!("[DEBUG] [RPM DISPLAY] Displaying!");
-        for (idx, bit) in self.shift_register.bit_array.iter_mut().enumerate() {
-            *bit = SEVEN_SEGMENT_OUTPUT[state.digits[idx / 8] as usize][idx % 8];
-        }
-        self.shift_register
-            .set_bit_array(self.shift_register.bit_array);
+        self.controller
+            .update_buffer_with_digit(Index::One, state.digits[0]);
+        self.controller
+            .update_buffer_with_digit(Index::Two, state.digits[1]);
+        self.controller
+            .update_buffer_with_digit(Index::Three, state.digits[2]);
+        self.controller
+            .update_buffer_with_digit(Index::Four, state.digits[3]);
+        self.controller
+            .write_display_buffer()
+            .expect("Failed to write to RPM display")
     }
 }
