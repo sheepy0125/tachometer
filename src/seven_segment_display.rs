@@ -41,15 +41,13 @@ where
 {
     fn display(&mut self, state: &State) {
         self.controller
-            .update_buffer_with_digit(Index::One, state.digits[0]);
+            .update_buffer_with_digit(Index::One, state.display_digits[0]);
         self.controller
-            .update_buffer_with_digit(Index::Two, state.digits[1]);
+            .update_buffer_with_digit(Index::Two, state.display_digits[1]);
         self.controller
-            .update_buffer_with_digit(Index::Three, state.digits[2]);
+            .update_buffer_with_digit(Index::Three, state.display_digits[2]);
         self.controller
-            .update_buffer_with_digit(Index::Four, state.digits[3]);
-        self.controller
-            .write_display_buffer()
-            .expect("Failed to write to RPM display")
+            .update_buffer_with_digit(Index::Four, state.display_digits[3]);
+        let _ = self.controller.write_display_buffer();
     }
 }

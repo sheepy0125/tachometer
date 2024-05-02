@@ -1,16 +1,18 @@
-//! Interrupts
+pub use millis::{millis, millis_init};
+pub use sensor::{rpm, sensor_init};
 
-use crate::pins;
-use arduino_hal::{pac::TC0, pins, Peripherals};
+use crate::{pins, shared::HISTORY_LEN};
+
+use arduino_hal::pac::{
+    exint::{eicra::EICRA_SPEC, eimsk::EIMSK_SPEC},
+    TC0,
+};
 use avr_device::{
-    atmega328p::exint::{pcicr::PCICR_SPEC, pcmsk0::PCMSK0_SPEC},
     generic::Reg,
     interrupt::{self, Mutex},
 };
-use core::cell::Cell;
-
-pub use millis::{millis, millis_init};
-pub use optical_encoder::{optical_encoder_init, OPTICAL_ENCODER_HITS};
+use core::cell::{Cell, RefCell};
+use heapless::HistoryBuffer;
 
 /// This millisecond interrupt was usurped from Rahix's amazing blog:
 /// https://blog.rahix.de/005-avr-hal-millis/
@@ -53,48 +55,84 @@ mod millis {
         })
     }
 
-    /// Milliseconds since the interrupt timer was configured for all times that interrupts were allowed
     pub fn millis() -> u32 {
         interrupt::free(|critical_section| MILLIS_COUNTER.borrow(critical_section).get())
     }
 }
 
-mod optical_encoder {
+mod sensor {
+    use crate::{
+        rpm::RpmInfo,
+        shared::{Milliseconds, MAX_DELTATIME},
+    };
+
     use super::*;
 
-    pub static OPTICAL_ENCODER_HITS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+    static SENSOR_HISTORY: Mutex<RefCell<HistoryBuffer<u32, HISTORY_LEN>>> =
+        Mutex::new(RefCell::new(HistoryBuffer::new()));
+    static RPM: Mutex<RefCell<RpmInfo>> = Mutex::new(RefCell::new(RpmInfo {
+        oldest_sensor_hit_time: 0,
+        count: 0,
+    }));
 
-    /// Safety note: The caller must ensure that the sensor pin is
-    /// pin change interrupt 4 of mask 0!
-    pub unsafe fn optical_encoder_init(
-        pcicr: &Reg<PCICR_SPEC>,
-        pcmsk0: &Reg<PCMSK0_SPEC>,
-        _: &pins::optical_encoder::Sensor,
+    /// Safety note: The caller must ensure that the sensor pin is INT 0 / PCINT 18!
+    pub unsafe fn sensor_init(
+        eicra: &Reg<EICRA_SPEC>,
+        eimsk: &Reg<EIMSK_SPEC>,
+        _: &pins::sensor::Sensor,
     ) {
         // Enable mask 0 interrupt
-        let mut enabled_interrupts = pcicr.read().bits() as u8;
-        enabled_interrupts |= 0b1 << 0;
-        pcicr.write(|w| unsafe { w.bits(enabled_interrupts) });
+        eicra.modify(|_, w| w.isc0().bits(0x02));
+        eimsk.modify(|_, w| w.int0().set_bit());
 
-        // Configure mask 0
-        let mut mask_0_bits = pcmsk0.read().bits() as u8;
-        mask_0_bits |= 0b1_u8 << 4; // PCINT4
-        pcmsk0.write(|w| w.bits(mask_0_bits));
+        // Clear the sensor history (currently filled with garbage).
+        // `new_with` isn't constant, so we need to do this at runtime
+        interrupt::free(|critical_section| {
+            let history_ref = SENSOR_HISTORY.borrow(critical_section);
+            let mut history = history_ref.borrow_mut();
+            for _ in 0..HISTORY_LEN {
+                history.write(0);
+            }
+        })
     }
 
     #[avr_device::interrupt(atmega328p)]
-    #[allow(non_snake_case)]
-    fn PCINT2() {
-        let peripherals = unsafe { Peripherals::steal() };
-        let pins = pins!(peripherals);
-        let optical_encoder_pin = pins.d12.into_pull_up_input() as pins::optical_encoder::Sensor;
-        if optical_encoder_pin.is_low() {
-            return;
-        }
+    fn INT0() {
+        let time = millis();
+        crate::console::debug!("INT");
+        let (count, oldest_sensor_hit_time) = interrupt::free(
+            |critical_section: interrupt::CriticalSection<'_>| -> (usize, Milliseconds) {
+                let history_ref = SENSOR_HISTORY.borrow(critical_section);
+                let mut history = history_ref.borrow_mut();
+                history.write(time);
+                history
+                    .oldest_ordered()
+                    .enumerate()
+                    .find(|(_, past)| {
+                        **past != 0 && ((time - **past) <= MAX_DELTATIME) && (time != **past)
+                    })
+                    .map_or((0, 0), |x| (HISTORY_LEN - x.0, *x.1))
+            },
+        );
         interrupt::free(|critical_section| {
-            let counter_cell = OPTICAL_ENCODER_HITS.borrow(critical_section);
-            let counter = counter_cell.get();
-            counter_cell.set(counter + 1);
+            let rpm_cell = RPM.borrow(critical_section);
+            let mut rpm_info = rpm_cell.borrow_mut();
+            rpm_info.oldest_sensor_hit_time = oldest_sensor_hit_time;
+            rpm_info.count = count;
+        })
+    }
+
+    pub fn rpm() -> RpmInfo {
+        interrupt::free(|critical_section| {
+            let rpm_cell = RPM.borrow(critical_section);
+            let RpmInfo {
+                ref oldest_sensor_hit_time,
+                ref count,
+            } = &*rpm_cell.borrow();
+            RpmInfo {
+                oldest_sensor_hit_time: *oldest_sensor_hit_time,
+                count: *count,
+            }
         })
     }
 }

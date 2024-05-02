@@ -1,6 +1,5 @@
-//! Panic handler
-
 use crate::shared::{UsbSerial, BAUD_RATE};
+
 use arduino_hal::{default_serial, delay_ms, prelude::_void_ResultVoidExt};
 use core::panic::PanicInfo;
 use ufmt::uwriteln;

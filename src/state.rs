@@ -1,5 +1,5 @@
 use crate::shared::DIGITS;
 
 pub struct State {
-    pub digits: [u8; DIGITS],
+    pub display_digits: [u8; DIGITS],
 }

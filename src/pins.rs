@@ -1,5 +1,3 @@
-//! Pin types to improve type safety
-
 use arduino_hal::{
     hal::port,
     port::{
@@ -8,9 +6,9 @@ use arduino_hal::{
     },
 };
 
-pub mod optical_encoder {
+pub mod sensor {
     use super::*;
-    pub type Sensor = Pin<Input<PullUp>, port::PB4>;
+    pub type Sensor = Pin<Input<PullUp>, port::PD2>;
 }
 
 pub mod iic {

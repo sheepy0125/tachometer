@@ -1,6 +1,7 @@
-//! Universal `println` macro for writing to the serial connection
+#![allow(unused_imports, unused_macros)]
 
 use crate::shared::UsbSerial;
+
 use avr_device::interrupt::{self, Mutex};
 use core::cell::RefCell;
 
